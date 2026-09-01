@@ -1,0 +1,45 @@
+# Build output
+bin/
+obj/
+
+# Visual Studio / VS Code
+.vs/
+.vscode/
+
+# User-specific files
+*.user
+*.suo
+
+# Local environment/configuration
+.env
+.env.*
+!.env.example
+
+# ASP.NET Core local secrets
+appsettings.Development.json
+appsettings.Local.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test results
+TestResults/
+
+# Local database files
+*.mdf
+*.ldf
+*.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Secrets
+secrets.json
+appsettings.json
