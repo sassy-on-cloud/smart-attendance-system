@@ -1,3 +1,4 @@
+using SmartAttendance.API.Security;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -9,7 +10,7 @@ namespace SmartAttendance.API.Controllers;
 
 [ApiController]
 [Route("api/reports")]
-[Authorize(Roles = "Admin,Teacher,Student")]
+[Authorize(Policy = AuthPolicies.KnownRoles)]
 [Tags("Attendance reports")]
 [Produces("application/json")]
 [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
@@ -97,14 +98,14 @@ public class AttendanceReportsController(AttendanceReportService reports) : Cont
 
     [HttpGet("teachers/me/summary")]
     [ProducesResponseType(typeof(ReportPageDto<TeacherCourseAttendanceDto>), StatusCodes.Status200OK)]
-    [Authorize(Roles = "Teacher")]
+    [Authorize(Policy = AuthPolicies.Teacher)]
     [ReportEndpoint("Current Teacher's attendance summaries", "Paged per-course summaries for courses assigned to the authenticated Teacher. Counts distinguish actual meetings from eligible student-session opportunities. Use courseId or percentage sorting.")]
     public Task<ActionResult<ReportPageDto<TeacherCourseAttendanceDto>>> GetMyTeacherSummary(
         [FromQuery] AttendancePercentageQuery query, CancellationToken cancellationToken) => TeacherSummary(_scope.UserId, query, cancellationToken);
 
     [HttpGet("teachers/{teacherUserId}/summary")]
     [ProducesResponseType(typeof(ReportPageDto<TeacherCourseAttendanceDto>), StatusCodes.Status200OK)]
-    [Authorize(Roles = "Admin,Teacher")]
+    [Authorize(Policy = AuthPolicies.Staff)]
     [ReportEndpoint("Teacher attendance summaries", "Admin can inspect a Teacher's assigned-course summaries. Teacher can inspect only self; another Teacher ID returns 404. No marking-action audit counts are substituted for student attendance.")]
     public Task<ActionResult<ReportPageDto<TeacherCourseAttendanceDto>>> GetTeacherSummary(
         [Range(1, int.MaxValue)] int teacherUserId, [FromQuery] AttendancePercentageQuery query, CancellationToken cancellationToken) =>
@@ -112,7 +113,7 @@ public class AttendanceReportsController(AttendanceReportService reports) : Cont
 
     [HttpGet("admin/dashboard")]
     [ProducesResponseType(typeof(AdminAttendanceDashboardDto), StatusCodes.Status200OK)]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = AuthPolicies.Admin)]
     [ReportEndpoint("Admin attendance dashboard", "Global account/student/course totals plus filtered meeting/record counts and weighted attendance statistics. Global totals are all-time. Meeting counts respect course/session/date filters; studentId narrows attendance counts/statistics, not global or meeting totals.")]
     public async Task<ActionResult<AdminAttendanceDashboardDto>> GetDashboard(
         [FromQuery] AttendanceReportFilter query, CancellationToken cancellationToken)

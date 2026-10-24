@@ -1,3 +1,4 @@
+using SmartAttendance.API.Security;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -5,14 +6,16 @@ using Microsoft.EntityFrameworkCore;
 using SmartAttendance.API.Data;
 using SmartAttendance.API.DTOs;
 using SmartAttendance.API.Models;
+using SmartAttendance.API.Services;
+using System.Security.Claims;
 
 namespace SmartAttendance.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class CoursesController(AppDbContext context) : ControllerBase
+public class CoursesController(AppDbContext context, AttendanceAccess access) : ControllerBase
 {
-    [Authorize(Roles = "Admin,Teacher,Student")]
+    [Authorize(Policy = AuthPolicies.KnownRoles)]
     [HttpGet]
     public async Task<ActionResult<IEnumerable<CourseResponseDto>>> GetCourses(CancellationToken cancellationToken)
     {
@@ -20,7 +23,7 @@ public class CoursesController(AppDbContext context) : ControllerBase
             .Select(ResponseProjections.Course).ToListAsync(cancellationToken);
     }
 
-    [Authorize(Roles = "Admin,Teacher,Student")]
+    [Authorize(Policy = AuthPolicies.KnownRoles)]
     [HttpGet("{id}")]
     public async Task<ActionResult<CourseResponseDto>> GetCourse(
         [Range(1, int.MaxValue)] int id, CancellationToken cancellationToken)
@@ -30,11 +33,13 @@ public class CoursesController(AppDbContext context) : ControllerBase
         return course is null ? NotFound() : Ok(course);
     }
 
-    [Authorize(Roles = "Admin,Teacher")]
+    [Authorize(Policy = AuthPolicies.Staff)]
     [HttpPost]
     public async Task<ActionResult<CourseResponseDto>> CreateCourse(
         CreateCourseDto dto, CancellationToken cancellationToken)
     {
+        int? actorId = int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) && userId > 0 ? userId : null;
+        if (!await access.IsStaffActorAsync(User.IsInRole(AppRoles.Admin), actorId, cancellationToken)) return Forbid();
         var course = new Course { CourseName = dto.CourseName.Trim(), CourseCode = dto.CourseCode.Trim() };
         context.Courses.Add(course);
         await context.SaveChangesAsync(cancellationToken);
@@ -43,7 +48,7 @@ public class CoursesController(AppDbContext context) : ControllerBase
         return CreatedAtAction(nameof(GetCourse), new { id = course.CourseId }, response);
     }
 
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = AuthPolicies.Admin)]
     [HttpPost("{id}/enrollments")]
     public async Task<ActionResult<EnrollmentResponseDto>> EnrollStudent(
         [Range(1, int.MaxValue)] int id, EnrollStudentDto dto, CancellationToken cancellationToken)
@@ -72,7 +77,7 @@ public class CoursesController(AppDbContext context) : ControllerBase
         return Ok(new EnrollmentResponseDto { StudentId = dto.StudentId, CourseId = id, IsLegacyInferred = false });
     }
 
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = AuthPolicies.Admin)]
     [HttpPost("{id}/teacher-assignments")]
     public async Task<ActionResult<TeacherAssignmentResponseDto>> AssignTeacher(
         [Range(1, int.MaxValue)] int id, AssignTeacherDto dto, CancellationToken cancellationToken)

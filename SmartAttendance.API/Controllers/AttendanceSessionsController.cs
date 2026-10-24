@@ -1,3 +1,4 @@
+using SmartAttendance.API.Security;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
@@ -12,7 +13,7 @@ namespace SmartAttendance.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "Admin,Teacher")]
+[Authorize(Policy = AuthPolicies.Staff)]
 public class AttendanceSessionsController(AppDbContext context, AttendanceSessionService sessionService) : ControllerBase
 {
     private int? ActorId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) && id > 0 ? id : null;
@@ -20,10 +21,10 @@ public class AttendanceSessionsController(AppDbContext context, AttendanceSessio
     private IQueryable<AttendanceSession> AccessibleSessions()
     {
         var query = context.AttendanceSessions.AsNoTracking();
-        if (User.IsInRole("Admin")) return query;
         var userId = ActorId;
         if (!userId.HasValue) return query.Where(_ => false);
-        return query.Where(s => context.TeacherCourseAssignments.Any(a => a.CourseId == s.CourseId && a.TeacherUserId == userId));
+        if (User.IsInRole("Admin")) return query.Where(_ => context.Users.Any(u => u.UserId == userId && u.Role == "Admin"));
+        return query.Where(s => context.TeacherCourseAssignments.Any(a => a.CourseId == s.CourseId && a.TeacherUserId == userId && a.Teacher.Role == "Teacher"));
     }
 
     [HttpGet]

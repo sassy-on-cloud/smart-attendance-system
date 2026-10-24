@@ -229,6 +229,6 @@ public sealed class DatabaseIntegrityTests(SqlServerFixture fixture)
                 await command.ExecuteNonQueryAsync();
             }
         }
-        Assert.Equal(4, (await scripted.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(5, (await scripted.Database.GetAppliedMigrationsAsync()).Count());
     }
 }

@@ -392,6 +392,11 @@ namespace SmartAttendance.API.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("NormalizedEmail")
+                        .HasMaxLength(254)
+                        .HasColumnType("nvarchar(254)")
+                        .UseCollation("Latin1_General_100_CI_AS");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -402,7 +407,14 @@ namespace SmartAttendance.API.Migrations
 
                     b.HasKey("UserId");
 
-                    b.ToTable("Users");
+                    b.HasIndex("NormalizedEmail")
+                        .IsUnique()
+                        .HasFilter("[NormalizedEmail] IS NOT NULL");
+
+                    b.ToTable("Users", t =>
+                        {
+                            t.HasCheckConstraint("CK_Users_NormalizedEmail", "([NormalizedEmail] IS NULL AND LTRIM(RTRIM([Email])) = '') OR\n([NormalizedEmail] IS NOT NULL AND LTRIM(RTRIM([Email])) <> '' AND [NormalizedEmail] <> '')");
+                        });
                 });
 
             modelBuilder.Entity("SmartAttendance.API.Models.Attendance", b =>

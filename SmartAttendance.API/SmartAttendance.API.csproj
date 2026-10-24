@@ -4,6 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>SmartAttendance.API-65c20367-178d-4210-b109-37585394e859</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

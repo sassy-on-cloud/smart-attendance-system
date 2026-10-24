@@ -1,3 +1,4 @@
+using SmartAttendance.API.Security;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
@@ -12,23 +13,23 @@ namespace SmartAttendance.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "Admin,Teacher,Student")]
+[Authorize(Policy = AuthPolicies.KnownRoles)]
 public class AttendancesController(AppDbContext context, AttendanceService attendanceService) : ControllerBase
 {
     private IQueryable<Attendance> AccessibleAttendances()
     {
         var query = context.Attendances.AsNoTracking();
-        if (User.IsInRole("Admin"))
-            return query;
-
         // Account identity is authoritative; StudentId is a separate database key.
         if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) || userId <= 0)
             return query.Where(_ => false);
 
-        if (User.IsInRole("Teacher"))
-            return query.Where(a => context.TeacherCourseAssignments.Any(t => t.CourseId == a.CourseId && t.TeacherUserId == userId));
+        if (User.IsInRole("Admin"))
+            return query.Where(_ => context.Users.Any(u => u.UserId == userId && u.Role == "Admin"));
 
-        return query.Where(a => a.Student != null && a.Student.UserId == userId);
+        if (User.IsInRole("Teacher"))
+            return query.Where(a => context.TeacherCourseAssignments.Any(t => t.CourseId == a.CourseId && t.TeacherUserId == userId && t.Teacher.Role == "Teacher"));
+
+        return query.Where(a => a.Student != null && a.Student.UserId == userId && a.Student.User != null && a.Student.User.Role == "Student");
     }
 
     [HttpGet]
@@ -47,7 +48,7 @@ public class AttendancesController(AppDbContext context, AttendanceService atten
         return attendance is null ? NotFound() : Ok(attendance);
     }
 
-    [Authorize(Roles = "Admin,Teacher")]
+    [Authorize(Policy = AuthPolicies.Staff)]
     [HttpPost]
     public async Task<ActionResult<AttendanceResponseDto>> CreateAttendance(
         CreateAttendanceDto dto, CancellationToken cancellationToken)
@@ -57,7 +58,7 @@ public class AttendancesController(AppDbContext context, AttendanceService atten
         return MapWriteResult(result);
     }
 
-    [Authorize(Roles = "Admin,Teacher")]
+    [Authorize(Policy = AuthPolicies.Staff)]
     [HttpPut("{id}")]
     public async Task<ActionResult<AttendanceResponseDto>> CorrectAttendance(
         [Range(1, int.MaxValue)] int id, CorrectAttendanceDto dto, CancellationToken cancellationToken)
@@ -66,7 +67,7 @@ public class AttendancesController(AppDbContext context, AttendanceService atten
         return MapWriteResult(await attendanceService.CorrectManualAsync(id, dto, User.IsInRole("Admin"), actorId, cancellationToken));
     }
 
-    [Authorize(Roles = "Admin,Teacher")]
+    [Authorize(Policy = AuthPolicies.Staff)]
     [HttpGet("{id}/history")]
     public async Task<ActionResult<IEnumerable<AttendanceHistoryResponseDto>>> GetHistory(
         [Range(1, int.MaxValue)] int id, CancellationToken cancellationToken)

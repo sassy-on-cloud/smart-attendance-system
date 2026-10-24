@@ -1,75 +1,72 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using SmartAttendance.API.Data;
 using SmartAttendance.API.DTOs;
-using SmartAttendance.API.Models;
+using SmartAttendance.API.Security;
 using SmartAttendance.API.Services;
 
 namespace SmartAttendance.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class UsersController(
-    AppDbContext context, IPasswordHasher<User> passwordHasher, TokenService tokenService) : ControllerBase
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+public class UsersController(AppDbContext context, AccountService accounts) : ControllerBase
 {
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = AuthPolicies.Admin)]
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<UserResponseDto>>> GetUsers(CancellationToken cancellationToken)
-    {
-        return await context.Users.AsNoTracking().Select(ResponseProjections.User).ToListAsync(cancellationToken);
-    }
+    public async Task<ActionResult<IEnumerable<UserResponseDto>>> GetUsers(CancellationToken cancellationToken) =>
+        await context.Users.AsNoTracking().Select(ResponseProjections.User).ToListAsync(cancellationToken);
 
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = AuthPolicies.Admin)]
     [HttpGet("{id}")]
-    public async Task<ActionResult<UserResponseDto>> GetUser(
-        [Range(1, int.MaxValue)] int id, CancellationToken cancellationToken)
+    public async Task<ActionResult<UserResponseDto>> GetUser([Range(1, int.MaxValue)] int id, CancellationToken cancellationToken)
     {
-        var user = await context.Users.AsNoTracking().Where(u => u.UserId == id)
-            .Select(ResponseProjections.User).FirstOrDefaultAsync(cancellationToken);
+        var user = await context.Users.AsNoTracking().Where(u => u.UserId == id).Select(ResponseProjections.User).FirstOrDefaultAsync(cancellationToken);
         return user is null ? NotFound() : Ok(user);
     }
 
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = AuthPolicies.CurrentAccount)]
+    [HttpGet("me")]
+    public async Task<ActionResult<UserResponseDto>> GetMe(CancellationToken cancellationToken)
+    {
+        var id = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!, CultureInfo.InvariantCulture);
+        return await context.Users.AsNoTracking().Where(u => u.UserId == id).Select(ResponseProjections.User).SingleAsync(cancellationToken);
+    }
+
+    [Authorize(Policy = AuthPolicies.Admin)]
     [HttpPost]
     public async Task<ActionResult<UserResponseDto>> CreateUser(RegisterUserDto dto, CancellationToken cancellationToken)
     {
-        var email = dto.Email.Trim();
-        if (await context.Users.AnyAsync(u => u.Email == email, cancellationToken))
-            return Conflict("A user with this email already exists.");
-
-        var user = new User { Name = dto.Name.Trim(), Email = email, Role = dto.Role };
-        user.PasswordHash = passwordHasher.HashPassword(user, dto.Password);
-        context.Users.Add(user);
-        await context.SaveChangesAsync(cancellationToken);
-        var response = await context.Users.AsNoTracking().Where(u => u.UserId == user.UserId)
-            .Select(ResponseProjections.User).SingleAsync(cancellationToken);
-        return CreatedAtAction(nameof(GetUser), new { id = user.UserId }, response);
+        var result = await accounts.RegisterAsync(dto, cancellationToken);
+        return result.Outcome switch
+        {
+            AccountCreationOutcome.Created => CreatedAtAction(nameof(GetUser), new { id = result.User!.UserId }, result.User),
+            AccountCreationOutcome.DuplicateEmail => Conflict("A user with this email already exists."),
+            _ => BadRequest("Registration fields do not meet the validation rules.")
+        };
     }
 
     [AllowAnonymous]
+    [EnableRateLimiting(AuthenticationRegistration.LoginRatePolicy)]
+    [RequestSizeLimit(8192)]
+    [ProducesResponseType(typeof(LoginResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
     [HttpPost("login")]
     public async Task<ActionResult<LoginResponseDto>> Login(LoginDto dto, CancellationToken cancellationToken)
     {
-        // Only authentication needs the stored hash; it never enters a response DTO.
-        var user = await context.Users.AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Email == dto.Email.Trim(), cancellationToken);
-        if (user is null)
-            return Unauthorized("Invalid email or password.");
-
-        var passwordResult = passwordHasher.VerifyHashedPassword(user, user.PasswordHash, dto.Password);
-        if (passwordResult == PasswordVerificationResult.Failed)
-            return Unauthorized("Invalid email or password.");
-
-        return Ok(new LoginResponseDto
+        var result = await accounts.LoginAsync(dto, cancellationToken);
+        if (result.Outcome == LoginOutcome.Throttled)
         {
-            Token = tokenService.CreateToken(user),
-            User = new UserResponseDto
-            {
-                UserId = user.UserId, Name = user.Name, Email = user.Email, Role = user.Role
-            }
-        });
+            Response.Headers.RetryAfter = result.RetryAfterSeconds.ToString(CultureInfo.InvariantCulture);
+            return Problem(statusCode: 429, title: "Too many login attempts. Try again later.");
+        }
+        return result.Outcome == LoginOutcome.Success ? Ok(result.Response) : Unauthorized("Invalid email or password.");
     }
 }

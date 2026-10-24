@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
+using SmartAttendance.API.Security;
 
 namespace SmartAttendance.API.DTOs;
 
@@ -12,7 +13,7 @@ public class RegisterUserDto
     [Required, EmailAddress, StringLength(254)]
     public string Email { get; set; } = string.Empty;
 
-    [Required, StringLength(128, MinimumLength = 8)]
+    [Required, StringLength(128, MinimumLength = 12), PasswordPolicy]
     public string Password { get; set; } = string.Empty;
 
     [Required, RegularExpression("^(Admin|Teacher|Student)$")]

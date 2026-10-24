@@ -28,6 +28,7 @@ public sealed class SecurityApiFactory : WebApplicationFactory<Program>
     public const string FailureSecret = "synthetic-credential-must-never-be-in-a-response";
     public string SigningKey { get; } = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
     public DbContextOptions<AppDbContext>? SqlServerTestOptions { get; init; }
+    public IReadOnlyDictionary<string, string?>? ConfigurationOverrides { get; init; }
     public TimeProvider? TestClock { get; init; }
     public string EnvironmentName { get; set; } = "Testing";
     private static readonly string SeedHash = new PasswordHasher<User>().HashPassword(new User(), Password);
@@ -48,6 +49,7 @@ public sealed class SecurityApiFactory : WebApplicationFactory<Program>
                 ["Jwt:Audience"] = Audience,
                 ["ConnectionStrings:DefaultConnection"] = "unused-test-only-connection"
             });
+            if (ConfigurationOverrides is not null) configuration.AddInMemoryCollection(ConfigurationOverrides);
         });
         builder.ConfigureLogging(logging => logging.ClearProviders());
         builder.ConfigureServices(services =>

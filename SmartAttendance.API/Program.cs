@@ -1,42 +1,19 @@
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using SmartAttendance.API.Data;
 using SmartAttendance.API.Models;
 using SmartAttendance.API.Services;
-using System.Text;
 using Microsoft.OpenApi;
 using SmartAttendance.API.Reporting;
+using SmartAttendance.API.Security;
 
-var builder = WebApplication.CreateBuilder(args);
+var provisionAdmin = args.Contains("--provision-admin", StringComparer.Ordinal);
+var builder = WebApplication.CreateBuilder(args.Where(arg => arg != "--provision-admin").ToArray());
 
 builder.Services.AddControllers();
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(
-                    builder.Configuration["Jwt:Key"]!
-                )
-            )
-        };
-    });
-
-builder.Services.AddAuthorization();
-
-builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
+builder.Services.AddAttendanceAuthentication();
+builder.Services.AddScoped<AccountService>();
+builder.Services.AddScoped<InitialAdminProvisioner>();
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<AttendanceService>();
@@ -57,6 +34,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
     options.OperationFilter<AttendanceReportOperationFilter>();
+    options.OperationFilter<AuthenticationOperationFilter>();
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -76,6 +54,32 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+if (provisionAdmin)
+{
+    // Explicit operator-only command: no HTTP endpoint, automatic seeding or automatic migration.
+    var settings = builder.Configuration.GetSection("InitialAdmin").Get<InitialAdminSettings>() ?? new();
+    try
+    {
+        await using var scope = app.Services.CreateAsyncScope();
+        var result = await scope.ServiceProvider.GetRequiredService<InitialAdminProvisioner>().ProvisionAsync(settings, CancellationToken.None);
+        Console.WriteLine(result switch
+        {
+            ProvisioningOutcome.Created => "Initial Admin created. Remove the one-time provisioning secrets.",
+            ProvisioningOutcome.AlreadyProvisioned => "An Admin already exists. No account was changed.",
+            ProvisioningOutcome.EmailConflict => "Provisioning email is already in use. No account was promoted.",
+            _ => "Provide valid InitialAdmin:Name, Email and Password through secure configuration."
+        });
+        Environment.ExitCode = result == ProvisioningOutcome.Created ? 0 : 2;
+    }
+    catch
+    {
+        Console.Error.WriteLine("Provisioning failed. Verify approved schema and configuration; no migration is run by this command.");
+        Environment.ExitCode = 1;
+    }
+    finally { settings.Password = string.Empty; await app.DisposeAsync(); }
+    return;
+}
+
 // Never send exception messages, configuration values or database details to clients.
 app.UseExceptionHandler(errorApp => errorApp.Run(context =>
     Results.Problem(statusCode: StatusCodes.Status500InternalServerError,
@@ -89,6 +93,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseRouting();
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();
