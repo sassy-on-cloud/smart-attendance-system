@@ -39,6 +39,8 @@ builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<AttendanceService>();
+builder.Services.AddScoped<AttendanceAccess>();
+builder.Services.AddScoped<AttendanceSessionService>();
 
 // Database
 builder.Services.AddDbContext<AppDbContext>(options =>

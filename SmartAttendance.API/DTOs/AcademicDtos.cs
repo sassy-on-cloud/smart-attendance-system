@@ -37,6 +37,12 @@ public class CreateAttendanceSessionDto : IValidatableObject
 
 public class AttendanceSessionResponseDto
 {
+    public string State { get; set; } = string.Empty;
+    public int Version { get; set; }
+    public int? CreatedByUserId { get; set; }
+    public int? LastModifiedByUserId { get; set; }
+    public DateTime? CreatedAtUtc { get; set; }
+    public DateTime? LastModifiedAtUtc { get; set; }
     public int AttendanceSessionId { get; set; }
     public int CourseId { get; set; }
     public DateTime? StartsAtUtc { get; set; }

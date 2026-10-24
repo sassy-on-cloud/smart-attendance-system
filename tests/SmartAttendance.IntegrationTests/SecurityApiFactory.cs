@@ -27,6 +27,7 @@ public sealed class SecurityApiFactory : WebApplicationFactory<Program>
     public const string Audience = "attendance-test-client";
     public const string FailureSecret = "synthetic-credential-must-never-be-in-a-response";
     public string SigningKey { get; } = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
+    public DbContextOptions<AppDbContext>? SqlServerTestOptions { get; init; }
     public string EnvironmentName { get; set; } = "Testing";
     private static readonly string SeedHash = new PasswordHasher<User>().HashPassword(new User(), Password);
     private readonly SqliteConnection _connection = new("Data Source=:memory:");
@@ -53,8 +54,13 @@ public sealed class SecurityApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<AppDbContext>();
             services.RemoveAll<DbContextOptions<AppDbContext>>();
             services.RemoveAll<IDbContextOptionsConfiguration<AppDbContext>>();
-            _connection.Open();
-            services.AddDbContext<AppDbContext>(options => options.UseSqlite(_connection).AddInterceptors(Probe));
+            if (SqlServerTestOptions is not null)
+                services.AddScoped(_ => new AppDbContext(SqlServerTestOptions));
+            else
+            {
+                _connection.Open();
+                services.AddDbContext<AppDbContext>(options => options.UseSqlite(_connection).AddInterceptors(Probe));
+            }
         });
     }
 

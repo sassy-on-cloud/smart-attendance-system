@@ -38,6 +38,15 @@ public class AttendanceSessionConfiguration : IEntityTypeConfiguration<Attendanc
     public void Configure(EntityTypeBuilder<AttendanceSession> builder)
     {
         builder.HasKey(s => s.AttendanceSessionId);
+        builder.Property(s => s.State).HasMaxLength(20).HasDefaultValue(AttendanceSessionStates.Open);
+        builder.Property(s => s.Version).IsConcurrencyToken().HasDefaultValue(1);
+        builder.HasOne<User>().WithMany().HasForeignKey(s => s.CreatedByUserId).OnDelete(DeleteBehavior.NoAction);
+        builder.HasOne<User>().WithMany().HasForeignKey(s => s.LastModifiedByUserId).OnDelete(DeleteBehavior.NoAction);
+        builder.ToTable(t =>
+        {
+            t.HasCheckConstraint("CK_AttendanceSessions_State", "[State] IN ('Open','Closed','Cancelled')");
+            t.HasCheckConstraint("CK_AttendanceSessions_Version", "[Version] > 0");
+        });
         builder.HasAlternateKey(s => new { s.AttendanceSessionId, s.CourseId });
         builder.HasOne(s => s.Course).WithMany().HasForeignKey(s => s.CourseId).OnDelete(DeleteBehavior.NoAction);
         builder.HasIndex(s => new { s.CourseId, s.StartsAtUtc }); // Deliberately not unique by day/time.

@@ -34,12 +34,17 @@ internal static class ResponseProjections
 
     public static readonly Expression<Func<AttendanceSession, AttendanceSessionResponseDto>> Session = session => new AttendanceSessionResponseDto
     {
+        State = session.State, Version = session.Version, CreatedByUserId = session.CreatedByUserId,
+        CreatedAtUtc = session.CreatedAtUtc, LastModifiedByUserId = session.LastModifiedByUserId,
+        LastModifiedAtUtc = session.LastModifiedAtUtc,
         AttendanceSessionId = session.AttendanceSessionId, CourseId = session.CourseId,
         StartsAtUtc = session.StartsAtUtc, EndsAtUtc = session.EndsAtUtc, IsLegacy = session.IsLegacy
     };
 
     public static readonly Expression<Func<Attendance, AttendanceResponseDto>> Attendance = attendance => new AttendanceResponseDto
     {
+        Version = attendance.Version, RecordedByUserId = attendance.RecordedByUserId,
+        LastModifiedByUserId = attendance.LastModifiedByUserId, LastModifiedAtUtc = attendance.LastModifiedAtUtc,
         AttendanceId = attendance.AttendanceId,
         AttendanceSessionId = attendance.AttendanceSessionId,
         IsLegacy = attendance.Session.IsLegacy,
@@ -48,5 +53,19 @@ internal static class ResponseProjections
         Date = attendance.Date,
         Status = attendance.Status,
         Method = attendance.Method
+    };
+
+    public static readonly Expression<Func<AttendanceHistory, AttendanceHistoryResponseDto>> History = h => new AttendanceHistoryResponseDto
+    {
+        AttendanceHistoryId = h.AttendanceHistoryId, ActorUserId = h.ActorUserId, ChangedAtUtc = h.ChangedAtUtc,
+        ChangeType = h.ChangeType, PreviousStatus = h.PreviousStatus, PreviousMethod = h.PreviousMethod,
+        Status = h.Status, Method = h.Method, Reason = h.Reason, Version = h.Version
+    };
+    public static readonly Expression<Func<AttendanceSessionHistory, AttendanceSessionHistoryResponseDto>> SessionHistory = h => new AttendanceSessionHistoryResponseDto
+    {
+        AttendanceSessionHistoryId = h.AttendanceSessionHistoryId, ActorUserId = h.ActorUserId,
+        ChangedAtUtc = h.ChangedAtUtc, PreviousState = h.PreviousState, State = h.State,
+        PreviousStartsAtUtc = h.PreviousStartsAtUtc, PreviousEndsAtUtc = h.PreviousEndsAtUtc,
+        StartsAtUtc = h.StartsAtUtc, EndsAtUtc = h.EndsAtUtc, Reason = h.Reason, Version = h.Version
     };
 }

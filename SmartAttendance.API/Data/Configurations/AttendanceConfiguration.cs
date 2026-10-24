@@ -8,10 +8,14 @@ public class AttendanceConfiguration : IEntityTypeConfiguration<Attendance>
 {
     public void Configure(EntityTypeBuilder<Attendance> builder)
     {
+        builder.Property(a => a.Version).IsConcurrencyToken().HasDefaultValue(1);
+        builder.HasOne<User>().WithMany().HasForeignKey(a => a.RecordedByUserId).OnDelete(DeleteBehavior.NoAction);
+        builder.HasOne<User>().WithMany().HasForeignKey(a => a.LastModifiedByUserId).OnDelete(DeleteBehavior.NoAction);
         builder.Property(a => a.Status).HasMaxLength(20).IsRequired();
         builder.Property(a => a.Method).HasMaxLength(20).IsRequired();
         builder.ToTable(t =>
         {
+            t.HasCheckConstraint("CK_Attendances_Version", "[Version] > 0");
             t.HasCheckConstraint("CK_Attendances_Status", "[Status] IN ('Present','Absent','Late','Excused','Unverified')");
             t.HasCheckConstraint("CK_Attendances_Method", "[Method] IN ('Manual','FaceRecognition','LegacyUnknown')");
         });

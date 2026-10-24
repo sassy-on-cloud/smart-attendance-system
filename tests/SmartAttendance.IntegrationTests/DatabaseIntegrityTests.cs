@@ -8,7 +8,8 @@ using Xunit;
 
 namespace SmartAttendance.IntegrationTests;
 
-public sealed class DatabaseIntegrityTests(SqlServerFixture fixture) : IClassFixture<SqlServerFixture>
+[Collection("SqlServer")]
+public sealed class DatabaseIntegrityTests(SqlServerFixture fixture)
 {
     private static readonly DateTime MeetingStart = new(2026, 10, 20, 4, 0, 0, DateTimeKind.Utc);
 
@@ -228,6 +229,6 @@ public sealed class DatabaseIntegrityTests(SqlServerFixture fixture) : IClassFix
                 await command.ExecuteNonQueryAsync();
             }
         }
-        Assert.Equal(3, (await scripted.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(4, (await scripted.Database.GetAppliedMigrationsAsync()).Count());
     }
 }

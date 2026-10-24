@@ -84,7 +84,7 @@ public sealed class ApiSecurityTests : IClassFixture<SecurityApiFactory>, IDispo
             "users" => new[] { "userId", "name", "email", "role" },
             "students" => new[] { "studentId", "userId", "rollNumber", "name", "email", "department", "semester" },
             "courses" => new[] { "courseId", "courseName", "courseCode" },
-            _ => new[] { "attendanceId", "attendanceSessionId", "isLegacy", "studentId", "courseId", "date", "status", "method" }
+            _ => new[] { "attendanceId", "attendanceSessionId", "isLegacy", "studentId", "courseId", "date", "status", "method", "version", "recordedByUserId", "lastModifiedByUserId", "lastModifiedAtUtc" }
         };
         var records = json.ValueKind == JsonValueKind.Array ? json.EnumerateArray().ToArray() : [json];
         Assert.NotEmpty(records);
@@ -237,7 +237,7 @@ public sealed class ApiSecurityTests : IClassFixture<SecurityApiFactory>, IDispo
         var attendanceJson = await SafeJson(attendance);
         Assert.Equal("Manual", attendanceJson.GetProperty("method").GetString());
         Assert.True(attendanceJson.GetProperty("date").GetDateTime() > DateTime.UtcNow.AddMinutes(-1));
-        Assert.Equal(new[] { "attendanceId", "attendanceSessionId", "courseId", "date", "isLegacy", "method", "status", "studentId" },
+        Assert.Equal(new[] { "attendanceId", "attendanceSessionId", "courseId", "date", "isLegacy", "lastModifiedAtUtc", "lastModifiedByUserId", "method", "recordedByUserId", "status", "studentId", "version" },
             attendanceJson.EnumerateObject().Select(p => p.Name).Order().ToArray());
         foreach (var created in new[] { user, student, course, session, attendance })
         {
@@ -394,7 +394,7 @@ public sealed class ApiSecurityTests : IClassFixture<SecurityApiFactory>, IDispo
     {
         Authenticate("Teacher", "22");
         var response = await _client.PostAsJsonAsync("/api/attendances", new { studentId, attendanceSessionId, status = "Present" });
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Equal((5, 2, 1, 2), await Counts());
     }
 

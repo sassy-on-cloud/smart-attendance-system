@@ -54,14 +54,39 @@ public class AttendancesController(AppDbContext context, AttendanceService atten
     {
         int? actorId = int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) && id > 0 ? id : null;
         var result = await attendanceService.MarkManualAsync(dto, User.IsInRole("Admin"), actorId, cancellationToken);
-        return result.Outcome switch
-        {
-            AttendanceWriteOutcome.Created => CreatedAtAction(nameof(GetAttendance),
-                new { id = result.Attendance!.AttendanceId }, result.Attendance),
-            AttendanceWriteOutcome.Forbidden => Forbid(),
-            AttendanceWriteOutcome.Duplicate => Conflict("Attendance already exists for this student and session."),
-            AttendanceWriteOutcome.NotEnrolled => BadRequest("Student must have a confirmed enrollment in the session's course."),
-            _ => BadRequest("A verified attendance session is required.")
-        };
+        return MapWriteResult(result);
     }
+
+    [Authorize(Roles = "Admin,Teacher")]
+    [HttpPut("{id}")]
+    public async Task<ActionResult<AttendanceResponseDto>> CorrectAttendance(
+        [Range(1, int.MaxValue)] int id, CorrectAttendanceDto dto, CancellationToken cancellationToken)
+    {
+        int? actorId = int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) && userId > 0 ? userId : null;
+        return MapWriteResult(await attendanceService.CorrectManualAsync(id, dto, User.IsInRole("Admin"), actorId, cancellationToken));
+    }
+
+    [Authorize(Roles = "Admin,Teacher")]
+    [HttpGet("{id}/history")]
+    public async Task<ActionResult<IEnumerable<AttendanceHistoryResponseDto>>> GetHistory(
+        [Range(1, int.MaxValue)] int id, CancellationToken cancellationToken)
+    {
+        if (!await AccessibleAttendances().AnyAsync(a => a.AttendanceId == id, cancellationToken)) return NotFound();
+        return await context.AttendanceHistory.AsNoTracking().Where(h => h.AttendanceId == id)
+            .OrderBy(h => h.Version).Select(ResponseProjections.History).ToListAsync(cancellationToken);
+    }
+
+    private ActionResult<AttendanceResponseDto> MapWriteResult(AttendanceWriteResult result) => result.Outcome switch
+    {
+        AttendanceWriteOutcome.Created => CreatedAtAction(nameof(GetAttendance), new { id = result.Attendance!.AttendanceId }, result.Attendance),
+        AttendanceWriteOutcome.Corrected => Ok(result.Attendance),
+        AttendanceWriteOutcome.Forbidden => Forbid(),
+        AttendanceWriteOutcome.MissingStudent => NotFound("Student does not exist."),
+        AttendanceWriteOutcome.MissingSession or AttendanceWriteOutcome.NotFound => NotFound(),
+        AttendanceWriteOutcome.Duplicate => Conflict("Attendance already exists for this student and session."),
+        AttendanceWriteOutcome.Conflict => Conflict("The record changed, the session does not permit this operation, or no change was requested."),
+        AttendanceWriteOutcome.NotEnrolled => BadRequest("Student must have a confirmed enrollment in the session's course."),
+        AttendanceWriteOutcome.InvalidStudent => BadRequest("Student must be linked to a Student account."),
+        _ => BadRequest("A verified attendance session is required.")
+    };
 }

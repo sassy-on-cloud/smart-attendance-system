@@ -23,6 +23,11 @@ namespace SmartAttendance.API.Models
 
         public string? LegacyMethod { get; set; }
 
+        public int Version { get; set; } = 1;
+        public int? RecordedByUserId { get; set; }
+        public int? LastModifiedByUserId { get; set; }
+        public DateTime? LastModifiedAtUtc { get; set; }
+
         public DateTime Date { get; set; }
 
         public string Status { get; set; } = AttendanceStatuses.Present;

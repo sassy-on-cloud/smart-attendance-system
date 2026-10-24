@@ -20,6 +20,8 @@ namespace SmartAttendance.API.Data
         public DbSet<CourseEnrollment> CourseEnrollments { get; set; }
         public DbSet<TeacherCourseAssignment> TeacherCourseAssignments { get; set; }
         public DbSet<AttendanceSession> AttendanceSessions { get; set; }
+        public DbSet<AttendanceHistory> AttendanceHistory { get; set; }
+        public DbSet<AttendanceSessionHistory> AttendanceSessionHistory { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

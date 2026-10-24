@@ -39,6 +39,12 @@ namespace SmartAttendance.API.Migrations
                     b.Property<DateTime>("Date")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("LastModifiedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("LastModifiedByUserId")
+                        .HasColumnType("int");
+
                     b.Property<string>("LegacyMethod")
                         .HasColumnType("nvarchar(max)");
 
@@ -50,6 +56,9 @@ namespace SmartAttendance.API.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<int?>("RecordedByUserId")
+                        .HasColumnType("int");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -58,9 +67,19 @@ namespace SmartAttendance.API.Migrations
                     b.Property<int>("StudentId")
                         .HasColumnType("int");
 
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
                     b.HasKey("AttendanceId");
 
                     b.HasIndex("CourseId");
+
+                    b.HasIndex("LastModifiedByUserId");
+
+                    b.HasIndex("RecordedByUserId");
 
                     b.HasIndex("AttendanceSessionId", "CourseId");
 
@@ -74,6 +93,73 @@ namespace SmartAttendance.API.Migrations
                             t.HasCheckConstraint("CK_Attendances_Method", "[Method] IN ('Manual','FaceRecognition','LegacyUnknown')");
 
                             t.HasCheckConstraint("CK_Attendances_Status", "[Status] IN ('Present','Absent','Late','Excused','Unverified')");
+
+                            t.HasCheckConstraint("CK_Attendances_Version", "[Version] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("SmartAttendance.API.Models.AttendanceHistory", b =>
+                {
+                    b.Property<long>("AttendanceHistoryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("AttendanceHistoryId"));
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("AttendanceId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ChangeType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("ChangedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("PreviousMethod")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("PreviousStatus")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("int");
+
+                    b.HasKey("AttendanceHistoryId");
+
+                    b.HasIndex("ActorUserId");
+
+                    b.HasIndex("AttendanceId", "Version")
+                        .IsUnique();
+
+                    b.ToTable("AttendanceHistory", t =>
+                        {
+                            t.HasCheckConstraint("CK_AttendanceHistory_ChangeType", "[ChangeType] IN ('Created','Corrected')");
+
+                            t.HasCheckConstraint("CK_AttendanceHistory_Reason", "[Reason] <> ''");
+
+                            t.HasCheckConstraint("CK_AttendanceHistory_Version", "[Version] > 0");
                         });
                 });
 
@@ -88,11 +174,23 @@ namespace SmartAttendance.API.Migrations
                     b.Property<int>("CourseId")
                         .HasColumnType("int");
 
+                    b.Property<DateTime?>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("EndsAtUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<bool>("IsLegacy")
                         .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastModifiedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("LastModifiedByUserId")
+                        .HasColumnType("int");
 
                     b.Property<int?>("LegacyAttendanceId")
                         .HasColumnType("int");
@@ -100,7 +198,24 @@ namespace SmartAttendance.API.Migrations
                     b.Property<DateTime?>("StartsAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Open");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
                     b.HasKey("AttendanceSessionId");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("LastModifiedByUserId");
 
                     b.HasIndex("LegacyAttendanceId")
                         .IsUnique()
@@ -111,6 +226,69 @@ namespace SmartAttendance.API.Migrations
                     b.ToTable("AttendanceSessions", t =>
                         {
                             t.HasCheckConstraint("CK_AttendanceSessions_Meeting", "([IsLegacy] = 1 AND [StartsAtUtc] IS NULL AND [EndsAtUtc] IS NULL AND [LegacyAttendanceId] IS NOT NULL)\nOR ([IsLegacy] = 0 AND [StartsAtUtc] IS NOT NULL AND [EndsAtUtc] IS NOT NULL\n    AND [EndsAtUtc] > [StartsAtUtc] AND [LegacyAttendanceId] IS NULL)");
+
+                            t.HasCheckConstraint("CK_AttendanceSessions_State", "[State] IN ('Open','Closed','Cancelled')");
+
+                            t.HasCheckConstraint("CK_AttendanceSessions_Version", "[Version] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("SmartAttendance.API.Models.AttendanceSessionHistory", b =>
+                {
+                    b.Property<long>("AttendanceSessionHistoryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("AttendanceSessionHistoryId"));
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("AttendanceSessionId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ChangedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("EndsAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("PreviousEndsAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("PreviousStartsAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PreviousState")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("StartsAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("int");
+
+                    b.HasKey("AttendanceSessionHistoryId");
+
+                    b.HasIndex("ActorUserId");
+
+                    b.HasIndex("AttendanceSessionId", "Version")
+                        .IsUnique();
+
+                    b.ToTable("AttendanceSessionHistory", t =>
+                        {
+                            t.HasCheckConstraint("CK_AttendanceSessionHistory_Version", "[Version] > 0");
                         });
                 });
 
@@ -235,6 +413,16 @@ namespace SmartAttendance.API.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
+                    b.HasOne("SmartAttendance.API.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("LastModifiedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("SmartAttendance.API.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("RecordedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.HasOne("SmartAttendance.API.Models.Student", "Student")
                         .WithMany()
                         .HasForeignKey("StudentId")
@@ -263,6 +451,25 @@ namespace SmartAttendance.API.Migrations
                     b.Navigation("Student");
                 });
 
+            modelBuilder.Entity("SmartAttendance.API.Models.AttendanceHistory", b =>
+                {
+                    b.HasOne("SmartAttendance.API.Models.User", "Actor")
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("SmartAttendance.API.Models.Attendance", "Attendance")
+                        .WithMany()
+                        .HasForeignKey("AttendanceId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Actor");
+
+                    b.Navigation("Attendance");
+                });
+
             modelBuilder.Entity("SmartAttendance.API.Models.AttendanceSession", b =>
                 {
                     b.HasOne("SmartAttendance.API.Models.Course", "Course")
@@ -271,7 +478,36 @@ namespace SmartAttendance.API.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
+                    b.HasOne("SmartAttendance.API.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("SmartAttendance.API.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("LastModifiedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.Navigation("Course");
+                });
+
+            modelBuilder.Entity("SmartAttendance.API.Models.AttendanceSessionHistory", b =>
+                {
+                    b.HasOne("SmartAttendance.API.Models.User", "Actor")
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("SmartAttendance.API.Models.AttendanceSession", "Session")
+                        .WithMany()
+                        .HasForeignKey("AttendanceSessionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Actor");
+
+                    b.Navigation("Session");
                 });
 
             modelBuilder.Entity("SmartAttendance.API.Models.CourseEnrollment", b =>
