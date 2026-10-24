@@ -28,6 +28,7 @@ public sealed class SecurityApiFactory : WebApplicationFactory<Program>
     public const string FailureSecret = "synthetic-credential-must-never-be-in-a-response";
     public string SigningKey { get; } = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
     public DbContextOptions<AppDbContext>? SqlServerTestOptions { get; init; }
+    public TimeProvider? TestClock { get; init; }
     public string EnvironmentName { get; set; } = "Testing";
     private static readonly string SeedHash = new PasswordHasher<User>().HashPassword(new User(), Password);
     private readonly SqliteConnection _connection = new("Data Source=:memory:");
@@ -51,6 +52,11 @@ public sealed class SecurityApiFactory : WebApplicationFactory<Program>
         builder.ConfigureLogging(logging => logging.ClearProviders());
         builder.ConfigureServices(services =>
         {
+            if (TestClock is not null)
+            {
+                services.RemoveAll<TimeProvider>();
+                services.AddSingleton(TestClock);
+            }
             services.RemoveAll<AppDbContext>();
             services.RemoveAll<DbContextOptions<AppDbContext>>();
             services.RemoveAll<IDbContextOptionsConfiguration<AppDbContext>>();
@@ -66,16 +72,9 @@ public sealed class SecurityApiFactory : WebApplicationFactory<Program>
 
     public void ResetDatabase()
     {
-        Probe.ThrowOnRead = false;
+        ResetEmptyDatabase();
         using var scope = Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        // Fail closed: only this open in-memory connection may be touched.
-        if (db.Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite" ||
-            !ReferenceEquals(db.Database.GetDbConnection(), _connection) ||
-            new SqliteConnectionStringBuilder(_connection.ConnectionString).DataSource != ":memory:")
-            throw new InvalidOperationException("Security tests require the private in-memory database.");
-        db.Database.EnsureDeleted();
-        db.Database.EnsureCreated();
         var users = new[]
         {
             new User { UserId = 11, Name = "Admin", Email = "admin@example.test", Role = "Admin" },
@@ -107,6 +106,20 @@ public sealed class SecurityApiFactory : WebApplicationFactory<Program>
             new Attendance { AttendanceId = 1, AttendanceSessionId = 1, StudentId = 1, CourseId = 1, Date = new DateTime(2026, 10, 20, 4, 0, 0, DateTimeKind.Utc), Status = "Present", Method = "Manual" },
             new Attendance { AttendanceId = 2, AttendanceSessionId = 1, StudentId = 2, CourseId = 1, Date = new DateTime(2026, 10, 20, 4, 0, 0, DateTimeKind.Utc), Status = "Absent", Method = "Manual" });
         db.SaveChanges();
+    }
+
+    public void ResetEmptyDatabase()
+    {
+        Probe.ThrowOnRead = false;
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        // Fail closed: only this open in-memory connection may be touched.
+        if (db.Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite" ||
+            !ReferenceEquals(db.Database.GetDbConnection(), _connection) ||
+            new SqliteConnectionStringBuilder(_connection.ConnectionString).DataSource != ":memory:")
+            throw new InvalidOperationException("Security tests require the private in-memory database.");
+        db.Database.EnsureDeleted();
+        db.Database.EnsureCreated();
     }
 
     public string Token(string role, string? userId = "101", string? issuer = null,

@@ -7,6 +7,7 @@ using SmartAttendance.API.Models;
 using SmartAttendance.API.Services;
 using System.Text;
 using Microsoft.OpenApi;
+using SmartAttendance.API.Reporting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -41,6 +42,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<AttendanceService>();
 builder.Services.AddScoped<AttendanceAccess>();
 builder.Services.AddScoped<AttendanceSessionService>();
+builder.Services.AddScoped<AttendanceReportService>();
 
 // Database
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -54,6 +56,7 @@ builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddSwaggerGen(options =>
 {
+    options.OperationFilter<AttendanceReportOperationFilter>();
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
