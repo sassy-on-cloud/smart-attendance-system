@@ -86,9 +86,20 @@ public sealed class SecurityApiFactory : WebApplicationFactory<Program>
             new Student { StudentId = 1, UserId = 101, RollNumber = "CS-01", Department = "Computing", Semester = 1 },
             new Student { StudentId = 2, UserId = 202, RollNumber = "CS-02", Department = "Computing", Semester = 1 });
         db.Courses.Add(new Course { CourseId = 1, CourseCode = "CS101", CourseName = "Programming" });
+        db.CourseEnrollments.AddRange(
+            new CourseEnrollment { StudentId = 1, CourseId = 1 },
+            new CourseEnrollment { StudentId = 2, CourseId = 1 });
+        db.TeacherCourseAssignments.Add(new TeacherCourseAssignment { TeacherUserId = 22, CourseId = 1 });
+        for (var sessionId = 1; sessionId <= 2; sessionId++)
+            db.AttendanceSessions.Add(new AttendanceSession
+            {
+                AttendanceSessionId = sessionId, CourseId = 1,
+                StartsAtUtc = new DateTime(2026, 10, 20, sessionId + 3, 0, 0, DateTimeKind.Utc),
+                EndsAtUtc = new DateTime(2026, 10, 20, sessionId + 4, 0, 0, DateTimeKind.Utc)
+            });
         db.Attendances.AddRange(
-            new Attendance { AttendanceId = 1, StudentId = 1, CourseId = 1, Date = new DateTime(2026, 10, 20, 4, 0, 0, DateTimeKind.Utc), Status = "Present", Method = "Manual" },
-            new Attendance { AttendanceId = 2, StudentId = 2, CourseId = 1, Date = new DateTime(2026, 10, 20, 4, 0, 0, DateTimeKind.Utc), Status = "Absent", Method = "Manual" });
+            new Attendance { AttendanceId = 1, AttendanceSessionId = 1, StudentId = 1, CourseId = 1, Date = new DateTime(2026, 10, 20, 4, 0, 0, DateTimeKind.Utc), Status = "Present", Method = "Manual" },
+            new Attendance { AttendanceId = 2, AttendanceSessionId = 1, StudentId = 2, CourseId = 1, Date = new DateTime(2026, 10, 20, 4, 0, 0, DateTimeKind.Utc), Status = "Absent", Method = "Manual" });
         db.SaveChanges();
     }
 

@@ -84,7 +84,7 @@ public sealed class ApiSecurityTests : IClassFixture<SecurityApiFactory>, IDispo
             "users" => new[] { "userId", "name", "email", "role" },
             "students" => new[] { "studentId", "userId", "rollNumber", "name", "email", "department", "semester" },
             "courses" => new[] { "courseId", "courseName", "courseCode" },
-            _ => new[] { "attendanceId", "studentId", "courseId", "date", "status", "method" }
+            _ => new[] { "attendanceId", "attendanceSessionId", "isLegacy", "studentId", "courseId", "date", "status", "method" }
         };
         var records = json.ValueKind == JsonValueKind.Array ? json.EnumerateArray().ToArray() : [json];
         Assert.NotEmpty(records);
@@ -113,7 +113,7 @@ public sealed class ApiSecurityTests : IClassFixture<SecurityApiFactory>, IDispo
     public async Task Existing_roles_are_enforced_through_http(string role, string route, string method, int status)
     {
         if (role != "Anonymous")
-            Authenticate(role, role == "Student" ? "101" : "11");
+            Authenticate(role, role == "Student" ? "101" : role == "Teacher" ? "22" : "11");
         using var request = new HttpRequestMessage(new HttpMethod(method), route);
         if (method == "POST")
             request.Content = JsonContent.Create(new { });
@@ -161,7 +161,7 @@ public sealed class ApiSecurityTests : IClassFixture<SecurityApiFactory>, IDispo
     [InlineData("Teacher")]
     public async Task Staff_retains_attendance_read_access(string role)
     {
-        Authenticate(role, "11");
+        Authenticate(role, role == "Teacher" ? "22" : "11");
         Assert.Equal(2, (await SafeJson(await _client.GetAsync("/api/attendances"))).GetArrayLength());
         Assert.Equal(HttpStatusCode.OK, (await _client.GetAsync("/api/attendances/2")).StatusCode);
     }
@@ -220,19 +220,26 @@ public sealed class ApiSecurityTests : IClassFixture<SecurityApiFactory>, IDispo
         var course = await _client.PostAsJsonAsync("/api/courses", new { courseName = "Databases", courseCode = "CS-102" });
         Assert.Equal(HttpStatusCode.Created, course.StatusCode);
         var courseJson = await SafeJson(course);
+        var courseId = courseJson.GetProperty("courseId").GetInt32();
+        var studentId = studentJson.GetProperty("studentId").GetInt32();
+        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsJsonAsync($"/api/courses/{courseId}/enrollments", new { studentId })).StatusCode);
+        var session = await _client.PostAsJsonAsync("/api/attendancesessions", new
+        {
+            courseId, startsAt = "2026-10-20T09:45:00+05:45", endsAt = "2026-10-20T10:45:00+05:45"
+        });
+        Assert.Equal(HttpStatusCode.Created, session.StatusCode);
+        var sessionJson = await SafeJson(session);
         var attendance = await _client.PostAsJsonAsync("/api/attendances", new
         {
-            studentId = studentJson.GetProperty("studentId").GetInt32(),
-            courseId = courseJson.GetProperty("courseId").GetInt32(),
-            date = "2026-10-20T09:45:00+05:45", status = "Present"
+            studentId, attendanceSessionId = sessionJson.GetProperty("attendanceSessionId").GetInt32(), status = "Present"
         });
         Assert.Equal(HttpStatusCode.Created, attendance.StatusCode);
         var attendanceJson = await SafeJson(attendance);
         Assert.Equal("Manual", attendanceJson.GetProperty("method").GetString());
-        Assert.Equal(new DateTime(2026, 10, 20, 4, 0, 0), attendanceJson.GetProperty("date").GetDateTime());
-        Assert.Equal(new[] { "attendanceId", "courseId", "date", "method", "status", "studentId" },
+        Assert.True(attendanceJson.GetProperty("date").GetDateTime() > DateTime.UtcNow.AddMinutes(-1));
+        Assert.Equal(new[] { "attendanceId", "attendanceSessionId", "courseId", "date", "isLegacy", "method", "status", "studentId" },
             attendanceJson.EnumerateObject().Select(p => p.Name).Order().ToArray());
-        foreach (var created in new[] { user, student, course, attendance })
+        foreach (var created in new[] { user, student, course, session, attendance })
         {
             Assert.NotNull(created.Headers.Location);
             var read = await _client.GetAsync(created.Headers.Location);
@@ -250,7 +257,7 @@ public sealed class ApiSecurityTests : IClassFixture<SecurityApiFactory>, IDispo
         await SafeJson(course);
         var attendance = await _client.PostAsJsonAsync("/api/attendances", new
         {
-            studentId = 1, courseId = 1, date = "2026-10-20T00:00:00Z", status = "Late"
+            studentId = 1, attendanceSessionId = 2, status = "Late"
         });
         Assert.Equal(HttpStatusCode.Created, attendance.StatusCode);
         Assert.Equal("Manual", (await SafeJson(attendance)).GetProperty("method").GetString());
@@ -288,12 +295,11 @@ public sealed class ApiSecurityTests : IClassFixture<SecurityApiFactory>, IDispo
         yield return ["courses", """{"courseName":"  ","courseCode":"CS101"}"""];
         yield return ["courses", """{"courseName":"Course","courseCode":"bad space"}"""];
         yield return ["attendances", "{}"];
-        yield return ["attendances", """{"studentId":0,"courseId":1,"date":"2026-10-20T00:00:00Z","status":"Present"}"""];
-        yield return ["attendances", """{"studentId":1,"courseId":-1,"date":"2026-10-20T00:00:00Z","status":"Present"}"""];
-        yield return ["attendances", """{"studentId":1,"courseId":1,"status":"Present"}"""];
-        yield return ["attendances", """{"studentId":1,"courseId":1,"date":"not-a-date","status":"Present"}"""];
-        yield return ["attendances", """{"studentId":1,"courseId":1,"date":"0001-01-01T00:00:00Z","status":"Present"}"""];
-        yield return ["attendances", """{"studentId":1,"courseId":1,"date":"2026-10-20T00:00:00Z","status":"Invented"}"""];
+        yield return ["attendances", """{"studentId":0,"attendanceSessionId":2,"status":"Present"}"""];
+        yield return ["attendances", """{"studentId":1,"attendanceSessionId":-1,"status":"Present"}"""];
+        yield return ["attendances", """{"studentId":1,"status":"Present"}"""];
+        yield return ["attendances", """{"studentId":1,"attendanceSessionId":"bad","status":"Present"}"""];
+        yield return ["attendances", """{"studentId":1,"attendanceSessionId":2,"status":"Invented"}"""];
         yield return ["users/login", "{}"];
         yield return ["users/login", """{"email":"bad","password":"test"}"""];
         yield return ["users/login", """{"email":"one@example.test","password":null}"""];
@@ -319,7 +325,7 @@ public sealed class ApiSecurityTests : IClassFixture<SecurityApiFactory>, IDispo
             ["users"] = """{"name":"Injected","email":"injected@example.test","password":"valid-password","role":"Student"}""",
             ["students"] = """{"userId":303,"rollNumber":"CS-03","department":"Computing","semester":1}""",
             ["courses"] = """{"courseName":"Injected","courseCode":"CS999"}""",
-            ["attendances"] = """{"studentId":1,"courseId":1,"date":"2026-10-20T00:00:00Z","status":"Present"}"""
+            ["attendances"] = """{"studentId":1,"attendanceSessionId":2,"status":"Present"}"""
         };
         foreach (var (resource, body) in requests)
         {
@@ -329,7 +335,7 @@ public sealed class ApiSecurityTests : IClassFixture<SecurityApiFactory>, IDispo
                 "users" => new[] { "userId", "passwordHash", "jwt" },
                 "students" => new[] { "studentId", "user", "role", "passwordHash" },
                 "courses" => new[] { "courseId", "attendances" },
-                _ => new[] { "attendanceId", "student", "course", "method", "recordedBy" }
+                _ => new[] { "attendanceId", "student", "course", "method", "recordedBy", "courseId", "date", "legacyStatus", "legacyMethod" }
             };
             foreach (var field in fields)
             {
@@ -384,10 +390,10 @@ public sealed class ApiSecurityTests : IClassFixture<SecurityApiFactory>, IDispo
     [Theory]
     [InlineData(99999, 1)]
     [InlineData(1, 99999)]
-    public async Task Attendance_requires_existing_foreign_keys(int studentId, int courseId)
+    public async Task Attendance_requires_existing_foreign_keys(int studentId, int attendanceSessionId)
     {
         Authenticate("Teacher", "22");
-        var response = await _client.PostAsJsonAsync("/api/attendances", new { studentId, courseId, date = "2026-10-20T00:00:00Z", status = "Present" });
+        var response = await _client.PostAsJsonAsync("/api/attendances", new { studentId, attendanceSessionId, status = "Present" });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal((5, 2, 1, 2), await Counts());
     }

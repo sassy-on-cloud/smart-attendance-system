@@ -17,5 +17,14 @@ namespace SmartAttendance.API.Data
         public DbSet<Course> Courses { get; set; }
 
         public DbSet<Attendance> Attendances { get; set; }
+        public DbSet<CourseEnrollment> CourseEnrollments { get; set; }
+        public DbSet<TeacherCourseAssignment> TeacherCourseAssignments { get; set; }
+        public DbSet<AttendanceSession> AttendanceSessions { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+            modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+        }
     }
 }

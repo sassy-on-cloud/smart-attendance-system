@@ -32,9 +32,17 @@ internal static class ResponseProjections
         CourseCode = course.CourseCode
     };
 
+    public static readonly Expression<Func<AttendanceSession, AttendanceSessionResponseDto>> Session = session => new AttendanceSessionResponseDto
+    {
+        AttendanceSessionId = session.AttendanceSessionId, CourseId = session.CourseId,
+        StartsAtUtc = session.StartsAtUtc, EndsAtUtc = session.EndsAtUtc, IsLegacy = session.IsLegacy
+    };
+
     public static readonly Expression<Func<Attendance, AttendanceResponseDto>> Attendance = attendance => new AttendanceResponseDto
     {
         AttendanceId = attendance.AttendanceId,
+        AttendanceSessionId = attendance.AttendanceSessionId,
+        IsLegacy = attendance.Session.IsLegacy,
         StudentId = attendance.StudentId,
         CourseId = attendance.CourseId,
         Date = attendance.Date,

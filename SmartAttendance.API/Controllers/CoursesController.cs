@@ -42,4 +42,54 @@ public class CoursesController(AppDbContext context) : ControllerBase
             .Select(ResponseProjections.Course).SingleAsync(cancellationToken);
         return CreatedAtAction(nameof(GetCourse), new { id = course.CourseId }, response);
     }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPost("{id}/enrollments")]
+    public async Task<ActionResult<EnrollmentResponseDto>> EnrollStudent(
+        [Range(1, int.MaxValue)] int id, EnrollStudentDto dto, CancellationToken cancellationToken)
+    {
+        if (!await context.Courses.AnyAsync(c => c.CourseId == id, cancellationToken) ||
+            !await context.Students.AnyAsync(s => s.StudentId == dto.StudentId && s.User != null && s.User.Role == "Student", cancellationToken))
+            return BadRequest("An existing course and Student account are required.");
+        var enrollment = await context.CourseEnrollments.FindAsync([dto.StudentId, id], cancellationToken);
+        if (enrollment is not null)
+        {
+            if (!enrollment.IsLegacyInferred) return Conflict("Student is already enrolled.");
+            enrollment.IsLegacyInferred = false; // Explicit Admin confirmation of historical evidence.
+        }
+        else
+        {
+            enrollment = new CourseEnrollment { StudentId = dto.StudentId, CourseId = id };
+            context.CourseEnrollments.Add(enrollment);
+        }
+        try { await context.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateException)
+        {
+            if (await context.CourseEnrollments.AsNoTracking().AnyAsync(e => e.StudentId == dto.StudentId && e.CourseId == id, cancellationToken))
+                return Conflict("Student is already enrolled.");
+            throw;
+        }
+        return Ok(new EnrollmentResponseDto { StudentId = dto.StudentId, CourseId = id, IsLegacyInferred = false });
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPost("{id}/teacher-assignments")]
+    public async Task<ActionResult<TeacherAssignmentResponseDto>> AssignTeacher(
+        [Range(1, int.MaxValue)] int id, AssignTeacherDto dto, CancellationToken cancellationToken)
+    {
+        if (!await context.Courses.AnyAsync(c => c.CourseId == id, cancellationToken) ||
+            !await context.Users.AnyAsync(u => u.UserId == dto.TeacherUserId && u.Role == "Teacher", cancellationToken))
+            return BadRequest("An existing course and Teacher account are required.");
+        if (await context.TeacherCourseAssignments.AnyAsync(a => a.CourseId == id && a.TeacherUserId == dto.TeacherUserId, cancellationToken))
+            return Conflict("Teacher is already assigned.");
+        context.TeacherCourseAssignments.Add(new TeacherCourseAssignment { CourseId = id, TeacherUserId = dto.TeacherUserId });
+        try { await context.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateException)
+        {
+            if (await context.TeacherCourseAssignments.AsNoTracking().AnyAsync(a => a.CourseId == id && a.TeacherUserId == dto.TeacherUserId, cancellationToken))
+                return Conflict("Teacher is already assigned.");
+            throw;
+        }
+        return Ok(new TeacherAssignmentResponseDto { TeacherUserId = dto.TeacherUserId, CourseId = id });
+    }
 }

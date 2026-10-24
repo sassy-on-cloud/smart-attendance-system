@@ -6,23 +6,27 @@ using Microsoft.EntityFrameworkCore;
 using SmartAttendance.API.Data;
 using SmartAttendance.API.DTOs;
 using SmartAttendance.API.Models;
+using SmartAttendance.API.Services;
 
 namespace SmartAttendance.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Roles = "Admin,Teacher,Student")]
-public class AttendancesController(AppDbContext context) : ControllerBase
+public class AttendancesController(AppDbContext context, AttendanceService attendanceService) : ControllerBase
 {
     private IQueryable<Attendance> AccessibleAttendances()
     {
         var query = context.Attendances.AsNoTracking();
-        if (User.IsInRole("Admin") || User.IsInRole("Teacher"))
+        if (User.IsInRole("Admin"))
             return query;
 
         // Account identity is authoritative; StudentId is a separate database key.
         if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) || userId <= 0)
             return query.Where(_ => false);
+
+        if (User.IsInRole("Teacher"))
+            return query.Where(a => context.TeacherCourseAssignments.Any(t => t.CourseId == a.CourseId && t.TeacherUserId == userId));
 
         return query.Where(a => a.Student != null && a.Student.UserId == userId);
     }
@@ -48,24 +52,16 @@ public class AttendancesController(AppDbContext context) : ControllerBase
     public async Task<ActionResult<AttendanceResponseDto>> CreateAttendance(
         CreateAttendanceDto dto, CancellationToken cancellationToken)
     {
-        if (!await context.Students.AnyAsync(s => s.StudentId == dto.StudentId, cancellationToken))
-            return BadRequest("Student does not exist.");
-        if (!await context.Courses.AnyAsync(c => c.CourseId == dto.CourseId, cancellationToken))
-            return BadRequest("Course does not exist.");
-
-        var attendance = new Attendance
+        int? actorId = int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) && id > 0 ? id : null;
+        var result = await attendanceService.MarkManualAsync(dto, User.IsInRole("Admin"), actorId, cancellationToken);
+        return result.Outcome switch
         {
-            StudentId = dto.StudentId,
-            CourseId = dto.CourseId,
-            Date = dto.Date!.Value.UtcDateTime,
-            Status = dto.Status,
-            // Callers cannot assert recognition provenance on the manual endpoint.
-            Method = "Manual"
+            AttendanceWriteOutcome.Created => CreatedAtAction(nameof(GetAttendance),
+                new { id = result.Attendance!.AttendanceId }, result.Attendance),
+            AttendanceWriteOutcome.Forbidden => Forbid(),
+            AttendanceWriteOutcome.Duplicate => Conflict("Attendance already exists for this student and session."),
+            AttendanceWriteOutcome.NotEnrolled => BadRequest("Student must have a confirmed enrollment in the session's course."),
+            _ => BadRequest("A verified attendance session is required.")
         };
-        context.Attendances.Add(attendance);
-        await context.SaveChangesAsync(cancellationToken);
-        var response = await context.Attendances.AsNoTracking().Where(a => a.AttendanceId == attendance.AttendanceId)
-            .Select(ResponseProjections.Attendance).SingleAsync(cancellationToken);
-        return CreatedAtAction(nameof(GetAttendance), new { id = attendance.AttendanceId }, response);
     }
 }

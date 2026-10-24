@@ -52,7 +52,13 @@ public class StudentsController(AppDbContext context) : ControllerBase
             Semester = dto.Semester
         };
         context.Students.Add(student);
-        await context.SaveChangesAsync(cancellationToken);
+        try { await context.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateException)
+        {
+            if (await context.Students.AsNoTracking().AnyAsync(s => s.UserId == dto.UserId, cancellationToken))
+                return Conflict("This user already has a student profile.");
+            throw;
+        }
 
         var response = await context.Students.AsNoTracking().Where(s => s.StudentId == student.StudentId)
             .Select(ResponseProjections.Student).SingleAsync(cancellationToken);
