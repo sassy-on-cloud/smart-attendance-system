@@ -5,6 +5,7 @@ using SmartAttendance.API.Services;
 using Microsoft.OpenApi;
 using SmartAttendance.API.Reporting;
 using SmartAttendance.API.Security;
+using SmartAttendance.API.Recognition;
 
 var provisionAdmin = args.Contains("--provision-admin", StringComparer.Ordinal);
 var builder = WebApplication.CreateBuilder(args.Where(arg => arg != "--provision-admin").ToArray());
@@ -20,6 +21,8 @@ builder.Services.AddScoped<AttendanceService>();
 builder.Services.AddScoped<AttendanceAccess>();
 builder.Services.AddScoped<AttendanceSessionService>();
 builder.Services.AddScoped<AttendanceReportService>();
+builder.Services.AddSingleton<IRecognitionComponent, UnavailableRecognitionComponent>();
+builder.Services.AddScoped<RecognitionWorkflow>();
 
 // Database
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -35,6 +38,7 @@ builder.Services.AddSwaggerGen(options =>
 {
     options.OperationFilter<AttendanceReportOperationFilter>();
     options.OperationFilter<AuthenticationOperationFilter>();
+    options.OperationFilter<RecognitionOperationFilter>();
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",

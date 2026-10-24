@@ -17,6 +17,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using SmartAttendance.API.Data;
 using SmartAttendance.API.Models;
+using SmartAttendance.API.Recognition;
 
 namespace SmartAttendance.IntegrationTests;
 
@@ -30,6 +31,7 @@ public sealed class SecurityApiFactory : WebApplicationFactory<Program>
     public DbContextOptions<AppDbContext>? SqlServerTestOptions { get; init; }
     public IReadOnlyDictionary<string, string?>? ConfigurationOverrides { get; init; }
     public TimeProvider? TestClock { get; init; }
+    public IRecognitionComponent? RecognitionComponent { get; init; }
     public string EnvironmentName { get; set; } = "Testing";
     private static readonly string SeedHash = new PasswordHasher<User>().HashPassword(new User(), Password);
     private readonly SqliteConnection _connection = new("Data Source=:memory:");
@@ -54,6 +56,11 @@ public sealed class SecurityApiFactory : WebApplicationFactory<Program>
         builder.ConfigureLogging(logging => logging.ClearProviders());
         builder.ConfigureServices(services =>
         {
+            if (RecognitionComponent is not null)
+            {
+                services.RemoveAll<IRecognitionComponent>();
+                services.AddSingleton(RecognitionComponent);
+            }
             if (TestClock is not null)
             {
                 services.RemoveAll<TimeProvider>();
