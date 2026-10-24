@@ -69,6 +69,11 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+// Never send exception messages, configuration values or database details to clients.
+app.UseExceptionHandler(errorApp => errorApp.Run(context =>
+    Results.Problem(statusCode: StatusCodes.Status500InternalServerError,
+        title: "An unexpected error occurred.").ExecuteAsync(context)));
+
 // Swagger
 if (app.Environment.IsDevelopment())
 {
@@ -84,3 +89,6 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+// Exposes the entry point to the isolated HTTP integration test host.
+public partial class Program { }

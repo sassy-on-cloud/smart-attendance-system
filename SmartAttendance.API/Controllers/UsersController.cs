@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -7,145 +8,68 @@ using SmartAttendance.API.DTOs;
 using SmartAttendance.API.Models;
 using SmartAttendance.API.Services;
 
-namespace SmartAttendance.API.Controllers
+namespace SmartAttendance.API.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public class UsersController(
+    AppDbContext context, IPasswordHasher<User> passwordHasher, TokenService tokenService) : ControllerBase
 {
-    [ApiController]
-    [Route("api/[controller]")]
-    public class UsersController : ControllerBase
+    [Authorize(Roles = "Admin")]
+    [HttpGet]
+    public async Task<ActionResult<IEnumerable<UserResponseDto>>> GetUsers(CancellationToken cancellationToken)
     {
-        private readonly AppDbContext _context;
-        private readonly IPasswordHasher<User> _passwordHasher;
-        private readonly TokenService _tokenService;
+        return await context.Users.AsNoTracking().Select(ResponseProjections.User).ToListAsync(cancellationToken);
+    }
 
-        public UsersController(
-            AppDbContext context,
-            IPasswordHasher<User> passwordHasher,
-            TokenService tokenService)
+    [Authorize(Roles = "Admin")]
+    [HttpGet("{id}")]
+    public async Task<ActionResult<UserResponseDto>> GetUser(
+        [Range(1, int.MaxValue)] int id, CancellationToken cancellationToken)
+    {
+        var user = await context.Users.AsNoTracking().Where(u => u.UserId == id)
+            .Select(ResponseProjections.User).FirstOrDefaultAsync(cancellationToken);
+        return user is null ? NotFound() : Ok(user);
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPost]
+    public async Task<ActionResult<UserResponseDto>> CreateUser(RegisterUserDto dto, CancellationToken cancellationToken)
+    {
+        var email = dto.Email.Trim();
+        if (await context.Users.AnyAsync(u => u.Email == email, cancellationToken))
+            return Conflict("A user with this email already exists.");
+
+        var user = new User { Name = dto.Name.Trim(), Email = email, Role = dto.Role };
+        user.PasswordHash = passwordHasher.HashPassword(user, dto.Password);
+        context.Users.Add(user);
+        await context.SaveChangesAsync(cancellationToken);
+        var response = await context.Users.AsNoTracking().Where(u => u.UserId == user.UserId)
+            .Select(ResponseProjections.User).SingleAsync(cancellationToken);
+        return CreatedAtAction(nameof(GetUser), new { id = user.UserId }, response);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("login")]
+    public async Task<ActionResult<LoginResponseDto>> Login(LoginDto dto, CancellationToken cancellationToken)
+    {
+        // Only authentication needs the stored hash; it never enters a response DTO.
+        var user = await context.Users.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Email == dto.Email.Trim(), cancellationToken);
+        if (user is null)
+            return Unauthorized("Invalid email or password.");
+
+        var passwordResult = passwordHasher.VerifyHashedPassword(user, user.PasswordHash, dto.Password);
+        if (passwordResult == PasswordVerificationResult.Failed)
+            return Unauthorized("Invalid email or password.");
+
+        return Ok(new LoginResponseDto
         {
-            _context = context;
-            _passwordHasher = passwordHasher;
-            _tokenService = tokenService;
-        }
-
-        // GET: api/users
-        [Authorize(Roles = "Admin")]
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<UserResponseDto>>> GetUsers()
-        {
-            var users = await _context.Users.ToListAsync();
-
-            var result = users.Select(user => new UserResponseDto
+            Token = tokenService.CreateToken(user),
+            User = new UserResponseDto
             {
-                UserId = user.UserId,
-                Name = user.Name,
-                Email = user.Email,
-                Role = user.Role
-            });
-
-            return Ok(result);
-        }
-
-        // GET: api/users/1
-        [Authorize(Roles = "Admin")]
-        [HttpGet("{id}")]
-        public async Task<ActionResult<UserResponseDto>> GetUser(int id)
-        {
-            var user = await _context.Users.FindAsync(id);
-
-            if (user == null)
-            {
-                return NotFound();
+                UserId = user.UserId, Name = user.Name, Email = user.Email, Role = user.Role
             }
-
-            return Ok(new UserResponseDto
-            {
-                UserId = user.UserId,
-                Name = user.Name,
-                Email = user.Email,
-                Role = user.Role
-            });
-        }
-
-        // POST: api/users
-        [Authorize(Roles = "Admin")]
-        [HttpPost]
-        public async Task<ActionResult<UserResponseDto>> CreateUser(
-            RegisterUserDto dto)
-        {
-            var emailExists = await _context.Users
-                .AnyAsync(u => u.Email == dto.Email);
-
-            if (emailExists)
-            {
-                return Conflict("A user with this email already exists.");
-            }
-
-            var user = new User
-            {
-                Name = dto.Name,
-                Email = dto.Email,
-                Role = dto.Role
-            };
-
-            user.PasswordHash = _passwordHasher.HashPassword(
-                user,
-                dto.Password
-            );
-
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
-
-            var response = new UserResponseDto
-            {
-                UserId = user.UserId,
-                Name = user.Name,
-                Email = user.Email,
-                Role = user.Role
-            };
-
-            return CreatedAtAction(
-                nameof(GetUser),
-                new { id = user.UserId },
-                response
-            );
-        }
-
-        // POST: api/users/login
-        [HttpPost("login")]
-        public async Task<ActionResult> Login(LoginDto dto)
-        {
-            var user = await _context.Users
-                .FirstOrDefaultAsync(u => u.Email == dto.Email);
-
-            if (user == null)
-            {
-                return Unauthorized("Invalid email or password.");
-            }
-
-            var passwordResult = _passwordHasher.VerifyHashedPassword(
-                user,
-                user.PasswordHash,
-                dto.Password
-            );
-
-            if (passwordResult == PasswordVerificationResult.Failed)
-            {
-                return Unauthorized("Invalid email or password.");
-            }
-
-            var token = _tokenService.CreateToken(user);
-
-            return Ok(new
-            {
-                token = token,
-                user = new UserResponseDto
-                {
-                    UserId = user.UserId,
-                    Name = user.Name,
-                    Email = user.Email,
-                    Role = user.Role
-                }
-            });
-        }
+        });
     }
 }

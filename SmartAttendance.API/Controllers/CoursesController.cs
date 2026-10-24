@@ -1,59 +1,45 @@
+using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartAttendance.API.Data;
+using SmartAttendance.API.DTOs;
 using SmartAttendance.API.Models;
-using Microsoft.AspNetCore.Authorization;
 
+namespace SmartAttendance.API.Controllers;
 
-namespace SmartAttendance.API.Controllers
+[ApiController]
+[Route("api/[controller]")]
+public class CoursesController(AppDbContext context) : ControllerBase
 {
-    [ApiController]
-    [Route("api/[controller]")]
-    public class CoursesController : ControllerBase
+    [Authorize(Roles = "Admin,Teacher,Student")]
+    [HttpGet]
+    public async Task<ActionResult<IEnumerable<CourseResponseDto>>> GetCourses(CancellationToken cancellationToken)
     {
-        private readonly AppDbContext _context;
+        return await context.Courses.AsNoTracking()
+            .Select(ResponseProjections.Course).ToListAsync(cancellationToken);
+    }
 
-        public CoursesController(AppDbContext context)
-        {
-            _context = context;
-        }
+    [Authorize(Roles = "Admin,Teacher,Student")]
+    [HttpGet("{id}")]
+    public async Task<ActionResult<CourseResponseDto>> GetCourse(
+        [Range(1, int.MaxValue)] int id, CancellationToken cancellationToken)
+    {
+        var course = await context.Courses.AsNoTracking().Where(c => c.CourseId == id)
+            .Select(ResponseProjections.Course).FirstOrDefaultAsync(cancellationToken);
+        return course is null ? NotFound() : Ok(course);
+    }
 
-        // GET: api/courses
-        [Authorize(Roles = "Admin,Teacher,Student")]
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<Course>>> GetCourses()
-        {
-            return await _context.Courses.ToListAsync();
-        }
-
-        // GET: api/courses/1
-        [Authorize(Roles = "Admin,Teacher,Student")]
-        [HttpGet("{id}")]
-        public async Task<ActionResult<Course>> GetCourse(int id)
-        {
-            var course = await _context.Courses.FindAsync(id);
-
-            if (course == null)
-            {
-                return NotFound();
-            }
-
-            return course;
-        }
-
-        // POST: api/courses
-        [Authorize(Roles = "Admin,Teacher")]
-        [HttpPost]
-        public async Task<ActionResult<Course>> CreateCourse(Course course)
-        {
-            _context.Courses.Add(course);
-            await _context.SaveChangesAsync();
-
-            return CreatedAtAction(
-                nameof(GetCourse),
-                new { id = course.CourseId },
-                course
-            );
-        }
+    [Authorize(Roles = "Admin,Teacher")]
+    [HttpPost]
+    public async Task<ActionResult<CourseResponseDto>> CreateCourse(
+        CreateCourseDto dto, CancellationToken cancellationToken)
+    {
+        var course = new Course { CourseName = dto.CourseName.Trim(), CourseCode = dto.CourseCode.Trim() };
+        context.Courses.Add(course);
+        await context.SaveChangesAsync(cancellationToken);
+        var response = await context.Courses.AsNoTracking().Where(c => c.CourseId == course.CourseId)
+            .Select(ResponseProjections.Course).SingleAsync(cancellationToken);
+        return CreatedAtAction(nameof(GetCourse), new { id = course.CourseId }, response);
     }
 }

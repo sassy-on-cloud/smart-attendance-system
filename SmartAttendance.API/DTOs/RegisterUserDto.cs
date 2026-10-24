@@ -1,13 +1,20 @@
-namespace SmartAttendance.API.DTOs
+using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
+
+namespace SmartAttendance.API.DTOs;
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public class RegisterUserDto
 {
-    public class RegisterUserDto
-    {
-        public string Name { get; set; } = string.Empty;
+    [Required, StringLength(100)]
+    public string Name { get; set; } = string.Empty;
 
-        public string Email { get; set; } = string.Empty;
+    [Required, EmailAddress, StringLength(254)]
+    public string Email { get; set; } = string.Empty;
 
-        public string Password { get; set; } = string.Empty;
+    [Required, StringLength(128, MinimumLength = 8)]
+    public string Password { get; set; } = string.Empty;
 
-        public string Role { get; set; } = "Student";
-    }
+    [Required, RegularExpression("^(Admin|Teacher|Student)$")]
+    public string Role { get; set; } = "Student";
 }
